@@ -1,20 +1,14 @@
 // src/test/java/common/ApiBaseTest.java
-
 package common;
 
 import io.restassured.RestAssured;
-import io.restassured.specification.RequestSpecification;
 import org.testng.annotations.BeforeClass;
 
 import java.io.FileInputStream;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.HashMap;
 import java.util.Map;
-import org.json.JSONObject;
 
 public class ApiBaseTest {
 
@@ -25,13 +19,16 @@ public class ApiBaseTest {
     protected static String tapDshan;
     protected static String sessionCookie;
     protected static String mobileNumber;
-    protected static String tapAuth;
+    
 
     protected static Map<String, String> commonHeaders = new HashMap<>();
-    protected static RequestSpecification requestSpec;
 
     @BeforeClass(alwaysRun = true)
     public void setup() {
+        initialize();
+    }
+
+    public static void initialize() {
         Properties properties = new Properties();
         try (FileInputStream fis = new FileInputStream("src/test/resources/config.properties")) {
             properties.load(fis);
@@ -53,22 +50,6 @@ public class ApiBaseTest {
         commonHeaders.put("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36");
         commonHeaders.put("X-App-Id", "ULTRA");
 
-        // Shared request spec with default headers for all tests
-        requestSpec = RestAssured.given().headers(commonHeaders);
-
-        // Try to load existing user/session from session_data.json at project root
-        try {
-            File sessionFile = new File("session_data.json");
-            if (sessionFile.exists()) {
-                String content = Files.readString(sessionFile.toPath(), StandardCharsets.UTF_8);
-                JSONObject json = new JSONObject(content);
-                authToken = json.optString("X-Tap-Auth", authToken);
-                tapSessionId = json.optString("X-Tap-Session", tapSessionId);
-                deviceId = json.optString("X-Device-Id", deviceId);
-                tapDshan = json.optString("X-Tap-Dshan", tapDshan);
-                sessionCookie = json.optString("_session", sessionCookie);
-                userId = json.optInt("X-User-Id", userId);
-            }
-        } catch (Exception ignore) { }
+        // requestSpec removed; consumers create their own specs via RequestHelper
     }
 }

@@ -1,20 +1,44 @@
 package flows;
 
-import common.Header;
-import io.restassured.RestAssured;
+import common.ApiBaseTest;
+import common.RequestHelper;
+import manager.RequestManager;
+import common.Endpoints;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
+import io.restassured.specification.RequestSpecification;
 import org.json.JSONObject;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+import common.util.JsonUtil;
+import common.pojo.investment.DealDetail;
+import common.pojo.investment.InvestmentStartRequest;
+import common.pojo.investment.PaymentOrderRequest;
 
-public class Investment {
-    public static void main(String[] args) {
-        RestAssured.baseURI = "https://kraken-stage.tapinvest.in";
+public class Investment extends ApiBaseTest {
+    private static final String TAP_AUTH_OVERRIDE = "6XpB92sJ9H12IOkvqqZiL";
+
+    @BeforeClass(alwaysRun = true)
+    public void setUp() {
+        ApiBaseTest.initialize();
+    }
+
+    @AfterClass(alwaysRun = true)
+    public void tearDown() {
+    }
+
+    @Test(priority = 1)
+    public void runInvestmentFlow() {
 
         try {
+            String overrideTapAuth = TAP_AUTH_OVERRIDE;
+
             // Step 1: Fetch available deals
             System.out.println("=== Fetching Deals ===");
-            Response dealsResponse = Header.getRequestWithHeader()
-                    .get("/v2/deals");
+            RequestManager readMgr = new RequestManager(readAuth(overrideTapAuth));
+
+            Response dealsResponse = readMgr.getRequest(Endpoints.DEALS);
 
             if (dealsResponse.getStatusCode() != 200) {
                 System.out.println("Failed to fetch deals. Status: " + dealsResponse.getStatusCode());
@@ -23,14 +47,12 @@ public class Investment {
 
             System.out.println("Deals Response: " + dealsResponse.prettyPrint());
 
-            // Step 2: Select a deal ID (using 4489 from your example)
             int dealId = 4487;
-            double investmentAmount = 52.0;
+            double investmentAmount = 13;
 
-            // Step 3: Fetch specific deal details
+            // Step 2: Fetch specific deal details
             System.out.println("\n=== Fetching Deal Details for Deal ID: " + dealId + " ===");
-            Response dealDetails = Header.getRequestWithHeader()
-                    .get("/v2/deals/" + dealId);
+            Response dealDetails = readMgr.getRequest(Endpoints.dealById(dealId));
 
             if (dealDetails.getStatusCode() != 200) {
                 System.out.println("Failed to fetch deal details. Status: " + dealDetails.getStatusCode());
@@ -39,17 +61,15 @@ public class Investment {
 
             System.out.println("Deal Details: " + dealDetails.prettyPrint());
 
-            // Step 3.1: Validate deal availability and investment amount
+            // Step 2.1: Validate deal availability and investment amount
             JSONObject dealResult = new JSONObject(dealDetails.getBody().asString()).getJSONObject("result");
 
-            // Check if deal is sold out
             boolean isSoldOut = dealResult.getBoolean("isSoldOut");
             if (isSoldOut) {
                 System.err.println("ERROR: Deal ID " + dealId + " is SOLD OUT. Cannot proceed with investment.");
                 return;
             }
 
-            // Check minimum investment amount
             JSONObject minInvestment = dealResult.getJSONObject("minInvestment");
             double minimumAmount = minInvestment.getDouble("amount");
 
@@ -58,7 +78,6 @@ public class Investment {
                 return;
             }
 
-            // Check maximum investment amount if available
             if (dealResult.has("maxInvestment")) {
                 JSONObject maxInvestment = dealResult.getJSONObject("maxInvestment");
                 double maximumAmount = maxInvestment.getDouble("amount");
@@ -69,7 +88,6 @@ public class Investment {
                 }
             }
 
-            // Check if investment is allowed
             if (dealResult.has("allowInvestment")) {
                 boolean allowInvestment = dealResult.getBoolean("allowInvestment");
                 if (!allowInvestment) {
@@ -82,12 +100,12 @@ public class Investment {
             System.out.println("✓ Deal is available (not sold out)");
             System.out.println("✓ Investment amount " + investmentAmount + " is within valid range [" + minimumAmount + " - " + (dealResult.has("maxInvestment") ? dealResult.getJSONObject("maxInvestment").getDouble("amount") : "unlimited") + "]");
 
-            // Step 4: Get investment terms for the amount
+            // Step 3: Get investment terms
             System.out.println("\n=== Fetching Investment Terms ===");
-            Response investmentTerms = Header.getRequestWithHeader()
+            Response investmentTerms = readAuth(overrideTapAuth)
                     .queryParam("amount", investmentAmount)
                     .queryParam("financeType", "INVOICE_DISCOUNTING")
-                    .get("/v2/deals/" + dealId + "/investment-terms");
+                    .get(Endpoints.investmentTerms(dealId));
 
             if (investmentTerms.getStatusCode() != 200) {
                 System.out.println("Failed to fetch investment terms. Status: " + investmentTerms.getStatusCode());
@@ -96,90 +114,54 @@ public class Investment {
 
             System.out.println("Investment Terms: " + investmentTerms.prettyPrint());
 
-            // Step 5: Check buffer availability (optional)
+            // Step 4: Check buffer availability
             System.out.println("\n=== Checking Buffer Availability ===");
-            Response bufferCheck = Header.getRequestWithHeader()
+            Response bufferCheck = readAuth(overrideTapAuth)
                     .queryParam("amount", investmentAmount)
-                    .get("/v2/investments/buffer-available");
+                    .get(Endpoints.INVESTMENTS_BUFFER_AVAILABLE);
 
             System.out.println("Buffer Check Status: " + bufferCheck.getStatusCode());
             if (bufferCheck.getStatusCode() == 200) {
                 System.out.println("Buffer Response: " + bufferCheck.prettyPrint());
             }
 
-            // Step 6: Start investment flow
+            // Step 5: Start investment flow
             System.out.println("\n=== Starting Investment Flow ===");
+            InvestmentStartRequest payload = buildInvestmentStartRequest(dealId, investmentAmount);
 
-            // Create the payload based on the API documentation
-            JSONObject dealDetail = new JSONObject();
-            dealDetail.put("dealId", dealId);
-            dealDetail.put("investmentAmount", investmentAmount);
-            dealDetail.put("reinvestment", false);
-
-            JSONObject paymentOrderRequest = new JSONObject();
-            paymentOrderRequest.put("successPath", "https://stage.getultra.club/dashboard?status=success&rechargeStatus=PAID");
-            paymentOrderRequest.put("failurePath", "https://stage.getultra.club/dashboard?status=failure");
-
-            JSONObject payload = new JSONObject();
-            payload.put("dealDetail", dealDetail);
-            payload.put("useWalletBalance", true);
-            payload.put("allowPartialPayment", true);
-            payload.put("paymentOrderRequest", paymentOrderRequest);
-
-            Response investmentResponse = Header.getRequestWithHeader()
+            Response investmentResponse = writeAuth(overrideTapAuth)
                     .contentType(ContentType.JSON)
-                    .body(payload.toString())
-                    .post("/v2/investments/start-invoice-discounting-investment-flow");
+                    .body(JsonUtil.toJson(payload))
+                    .post(Endpoints.INVESTMENTS_START_ID_FLOW);
 
             System.out.println("Investment Flow Response Status: " + investmentResponse.getStatusCode());
             System.out.println("Investment Response: " + investmentResponse.prettyPrint());
 
-            // Step 7: If investment was successful, fetch transaction view
+            // Step 6: Post-investment checks
             if (investmentResponse.getStatusCode() == 200) {
                 System.out.println("\n=== Fetching Transaction View ===");
+                JSONObject transactionFilter = buildTransactionFilter();
 
-                JSONObject transactionFilter = new JSONObject();
-                transactionFilter.put("pageNumber", 0);
-                transactionFilter.put("pageSize", 3);
-
-                JSONObject investmentStatusFilter = new JSONObject();
-                investmentStatusFilter.put("values", new String[]{"SUCCESS"});
-                investmentStatusFilter.put("filterType", "IN");
-                transactionFilter.put("investmentStatus", investmentStatusFilter);
-
-                JSONObject transactionTypeFilter = new JSONObject();
-                transactionTypeFilter.put("values", new String[]{"INVESTMENT"});
-                transactionTypeFilter.put("filterType", "IN");
-                transactionFilter.put("transactionType", transactionTypeFilter);
-
-                JSONObject transactionDateSort = new JSONObject();
-                transactionDateSort.put("sortOrder", "DESC");
-                transactionFilter.put("transactionDate", transactionDateSort);
-
-                Response transactionView = Header.getRequestWithHeader()
+                Response transactionView = writeAuth(overrideTapAuth)
                         .contentType(ContentType.JSON)
                         .body(transactionFilter.toString())
-                        .post("/v2/investment-dashboard/get-transaction-view");
+                        .post(Endpoints.INVESTMENT_DASHBOARD_TRANSACTION_VIEW);
 
                 System.out.println("Transaction View Status: " + transactionView.getStatusCode());
                 if (transactionView.getStatusCode() == 200) {
                     System.out.println("Transaction View: " + transactionView.prettyPrint());
                 }
 
-                // Step 8: Get investment metrics
                 System.out.println("\n=== Fetching Investment Metrics ===");
-                Response metricsResponse = Header.getRequestWithHeader()
-                        .get("/v2/investment-dashboard/get-metrics/ALL");
+                Response metricsResponse = readMgr.getRequest(Endpoints.INVESTMENT_DASHBOARD_METRICS_ALL);
 
                 System.out.println("Metrics Status: " + metricsResponse.getStatusCode());
                 if (metricsResponse.getStatusCode() == 200) {
                     System.out.println("Investment Metrics: " + metricsResponse.prettyPrint());
                 }
 
-                // Step 9: Check if user is invested
                 System.out.println("\n=== Checking User Investment Status ===");
-                Response userInvestmentStatus = Header.getRequestWithHeader()
-                        .get("/v2/user/is-invested");
+                Response userInvestmentStatus = readMgr.getRequest(Endpoints.USER_IS_INVESTED);
 
                 System.out.println("User Investment Status: " + userInvestmentStatus.getStatusCode());
                 if (userInvestmentStatus.getStatusCode() == 200) {
@@ -191,5 +173,46 @@ public class Investment {
             System.err.println("Error occurred during investment flow: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+    private static RequestSpecification readAuth(String tapAuth) {
+        return RequestHelper.readRequestWithAuth(commonHeaders, tapAuth);
+    }
+
+    private static RequestSpecification writeAuth(String tapAuth) {
+        return RequestHelper.writeRequestWithAuth(commonHeaders, tapAuth);
+    }
+
+    private static JSONObject buildTransactionFilter() {
+        return new JSONObject()
+                .put("pageNumber", 0)
+                .put("pageSize", 3)
+                .put("investmentStatus", new JSONObject()
+                        .put("values", new String[]{"SUCCESS"})
+                        .put("filterType", "IN"))
+                .put("transactionType", new JSONObject()
+                        .put("values", new String[]{"INVESTMENT"})
+                        .put("filterType", "IN"))
+                .put("transactionDate", new JSONObject()
+                        .put("sortOrder", "DESC"));
+    }
+
+    private static InvestmentStartRequest buildInvestmentStartRequest(int dealId, double investmentAmount) {
+        DealDetail detail = DealDetail.builder()
+                .dealId(dealId)
+                .investmentAmount(investmentAmount)
+                .reinvestment(false)
+                .build();
+
+        PaymentOrderRequest por = PaymentOrderRequest.builder()
+                .successPath("https://stage.getultra.club/dashboard?status=success&rechargeStatus=PAID")
+                .failurePath("https://stage.getultra.club/dashboard?status=failure")
+                .build();
+
+        return InvestmentStartRequest.builder()
+                .dealDetail(detail)
+                .useWalletBalance(true)
+                .allowPartialPayment(true)
+                .paymentOrderRequest(por)
+                .build();
     }
 }

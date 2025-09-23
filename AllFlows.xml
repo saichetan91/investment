@@ -1,0 +1,13 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="Full Automation Suite">
+    <listeners>
+        <listener class-name="Report.ExtentReportListener"/>
+    </listeners>
+    <test name="ALL Flows">
+        <classes>
+            <class name="flows.SignupFlow"/>
+            <class name="flows.KycFlow"/>
+            <class name="flows.Investment"/>
+        </classes>
+    </test>
+</suite>

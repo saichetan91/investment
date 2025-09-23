@@ -9,7 +9,7 @@ public class TestDataHelper {
         Random random = new Random();
         int firstDigit = random.nextInt(4) + 6; // 6-9
         String remainingDigits = String.format("%09d", random.nextInt(1_000_000_000));
-        return String.valueOf(firstDigit) + remainingDigits;
+        return firstDigit + remainingDigits;
     }
 
     public static String generateEvenBankAccountNumber(int length) {

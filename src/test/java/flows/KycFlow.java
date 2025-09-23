@@ -4,12 +4,25 @@ package flows;
 
 import io.restassured.response.Response;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import common.ApiBaseTest;
 import common.OtpHelper;
 import common.RequestHelper;
 import common.TestDataHelper;
+import common.Endpoints;
+import manager.RequestManager;
+import common.util.JsonUtil;
+import common.pojo.kyc.UpdateProfileRequest;
+import common.pojo.kyc.PanVerifyRequest;
+import common.pojo.kyc.PanSubmitRequest;
+import common.pojo.kyc.AadhaarRequest;
+import common.pojo.kyc.BankDetailsRequest;
+import common.pojo.kyc.AccreditationAnswersRequest;
+import common.pojo.kyc.ComplianceRequest;
+import java.util.LinkedHashMap;
 
 public class KycFlow extends ApiBaseTest {
 
@@ -22,17 +35,27 @@ public class KycFlow extends ApiBaseTest {
     private final String bankAccountNumber = TestDataHelper.generateEvenBankAccountNumber(15);
     private final String ifscCode = "SBIN0001234";
 
-    
+    @BeforeClass(alwaysRun = true)
+    public void setUp() {
+        // Initialization handled by ApiBaseTest, hook kept for symmetry
+    }
+
+    @AfterClass(alwaysRun = true)
+    public void tearDown() {
+    }
 
     @Test(priority = 1, dependsOnGroups = {"signup"})
     public void testUpdateUserProfile() {
         // Use the dynamic userId from ApiBaseTest
-        String updateProfileUrl = "/v2/user/update-profile";
-        String requestBody = String.format("{\"id\": %d, \"firstName\": \"%s\", \"gender\": \"%s\"}", ApiBaseTest.userId, firstName, gender);
+        String updateProfileUrl = Endpoints.USER_UPDATE_PROFILE;
+        UpdateProfileRequest requestBody = UpdateProfileRequest.builder()
+                .id(ApiBaseTest.userId)
+                .firstName(firstName)
+                .gender(gender)
+                .build();
 
-        Response response = RequestHelper.writeRequest(commonHeaders)
-                .body(requestBody)
-                .post(updateProfileUrl);
+        RequestManager write = new RequestManager(RequestHelper.writeRequest(commonHeaders));
+        Response response = write.postRequest(updateProfileUrl, JsonUtil.toJson(requestBody));
 
         Assert.assertEquals(response.getStatusCode(), 200, "Profile update failed.");
     }
@@ -44,7 +67,7 @@ public class KycFlow extends ApiBaseTest {
         Response requestOtpResponse = OtpHelper.requestEmailOtp(testEmail, ApiBaseTest.authToken, ApiBaseTest.tapSessionId, ApiBaseTest.deviceId, ApiBaseTest.tapDshan, ApiBaseTest.sessionCookie, commonHeaders);
         Assert.assertEquals(requestOtpResponse.getStatusCode(), 202, "Email OTP request failed.");
 
-        Response verifyOtpResponse = OtpHelper.verifyEmailOtp(testEmail, OtpHelper.FIXED_EMAIL_OTP, ApiBaseTest.authToken, ApiBaseTest.tapSessionId, ApiBaseTest.deviceId, ApiBaseTest.tapDshan, ApiBaseTest.sessionCookie, commonHeaders);
+        Response verifyOtpResponse = OtpHelper.verifyEmailOtp(testEmail, OtpHelper.FIXED_OTP, ApiBaseTest.authToken, ApiBaseTest.tapSessionId, ApiBaseTest.deviceId, ApiBaseTest.tapDshan, ApiBaseTest.sessionCookie, commonHeaders);
         Assert.assertEquals(verifyOtpResponse.getStatusCode(), 200, "Email OTP verification failed.");
 
         ApiBaseTest.authToken = verifyOtpResponse.jsonPath().getString("token");
@@ -53,33 +76,34 @@ public class KycFlow extends ApiBaseTest {
 
     @Test(priority = 3, dependsOnMethods = {"testEmailVerification"})
     public void testPanVerification() {
-        String verifyPanUrl = "/v2/user/pan/verify";
-        String requestBody = String.format("{\"panNumber\": \"%s\"}", panNumber);
-        Response response = RequestHelper.writeRequest(commonHeaders)
-                .body(requestBody)
-                .post(verifyPanUrl);
+        String verifyPanUrl = Endpoints.USER_PAN_VERIFY;
+        PanVerifyRequest requestBody = PanVerifyRequest.builder()
+                .panNumber(panNumber)
+                .build();
+        RequestManager write = new RequestManager(RequestHelper.writeRequest(commonHeaders));
+        Response response = write.postRequest(verifyPanUrl, JsonUtil.toJson(requestBody));
 
         response.then().log().all();
         Assert.assertEquals(response.getStatusCode(), 200, "PAN verification failed.");
 
-        String submitPanUrl = "/v2/user/pan";
-        String submitBody = String.format("{\"panCardNumber\": \"%s\", \"name\": \"%s\"}", panNumber, panName);
-
-        Response submitResponse = RequestHelper.writeRequest(commonHeaders)
-                .body(submitBody)
-                .post(submitPanUrl);
+        String submitPanUrl = Endpoints.USER_PAN_SUBMIT;
+        PanSubmitRequest submitBody = PanSubmitRequest.builder()
+                .panCardNumber(panNumber)
+                .name(panName)
+                .build();
+        Response submitResponse = write.postRequest(submitPanUrl, JsonUtil.toJson(submitBody));
 
         Assert.assertEquals(submitResponse.getStatusCode(), 200, "PAN submission failed.");
     }
 
     @Test(priority = 4, dependsOnMethods = {"testPanVerification"})
     public void testAadhaarVerification() {
-        String requestAadhaarOtpUrl = "/v2/user/aadhaar/verify";
-        String requestBody = String.format("{\"aadhaarNumber\": \"%s\"}", aadhaarNumber);
-
-        Response response = RequestHelper.writeRequest(commonHeaders)
-                .body(requestBody)
-                .post(requestAadhaarOtpUrl);
+        String requestAadhaarOtpUrl = Endpoints.USER_AADHAAR_REQUEST;
+        AadhaarRequest requestBody = AadhaarRequest.builder()
+                .aadhaarNumber(aadhaarNumber)
+                .build();
+        RequestManager write = new RequestManager(RequestHelper.writeRequest(commonHeaders));
+        Response response = write.postRequest(requestAadhaarOtpUrl, JsonUtil.toJson(requestBody));
 
         response.then().log().all();
         Assert.assertEquals(response.getStatusCode(), 200, "Aadhaar OTP request failed.");
@@ -91,56 +115,56 @@ public class KycFlow extends ApiBaseTest {
     @Test(priority = 5, dependsOnMethods = {"testAadhaarVerification"})
     public void testBankAndAccreditation() {
         // Step 1: Submit Bank Details
-        String bankDetailsUrl = "/v2/user/bank-details";
-        String bankRequestBody = String.format("{\"accountNumber\": \"%s\", \"confirmAccountNumber\": \"%s\", \"ifscCode\": \"%s\"}",
-                bankAccountNumber, bankAccountNumber, ifscCode);
+        String bankDetailsUrl = Endpoints.USER_BANK_DETAILS;
+        BankDetailsRequest bankRequestBody = BankDetailsRequest.builder()
+                .accountNumber(bankAccountNumber)
+                .confirmAccountNumber(bankAccountNumber)
+                .ifscCode(ifscCode)
+                .build();
 
         Response bankResponse = RequestHelper.writeRequest(commonHeaders)
-                .body(bankRequestBody)
+                .body(JsonUtil.toJson(bankRequestBody))
                 .post(bankDetailsUrl);
 
         bankResponse.then().log().all();
         Assert.assertEquals(bankResponse.getStatusCode(), 200, "Bank details submission failed.");
 
-        String getAccreditationUrl = "/v2/user/get-accreditation";
-
-        Response getAccreditationResponse = RequestHelper.readRequest(commonHeaders)
-                .get(getAccreditationUrl);
+        String getAccreditationUrl = Endpoints.USER_GET_ACCREDITATION;
+        RequestManager read = new RequestManager(RequestHelper.readRequest(commonHeaders));
+        Response getAccreditationResponse = read.getRequest(getAccreditationUrl);
 
         getAccreditationResponse.then().log().all();
         Assert.assertEquals(getAccreditationResponse.getStatusCode(), 200, "Get accreditation failed.");
-        String markAnswerUrl = "/v2/user/accreditation/mark-answer";
-        String markAnswerBody = String.format("{" +
-                "\"userId\": %d," +
-                "\"accreditationAnswers\": {" +
-                "\"1\": 10," +
-                "\"2\": 16," +
-                "\"3\": 19," +
-                "\"4\": 24," +
-                "\"5\": 25," +
-                "\"6\": 28," +
-                "\"7\": 29" +
-                "}" +
-                "}", ApiBaseTest.userId);
+        String markAnswerUrl = Endpoints.USER_ACCREDITATION_MARK_ANSWER;
+        LinkedHashMap<String, Integer> map = new LinkedHashMap<>();
+        map.put("1", 10);
+        map.put("2", 16);
+        map.put("3", 19);
+        map.put("4", 24);
+        map.put("5", 25);
+        map.put("6", 28);
+        map.put("7", 29);
 
-        Response markAnswerResponse = RequestHelper.writeRequest(commonHeaders)
-                .body(markAnswerBody)
-                .post(markAnswerUrl);
+        AccreditationAnswersRequest answers = AccreditationAnswersRequest.builder()
+                .userId(ApiBaseTest.userId)
+                .accreditationAnswers(map)
+                .build();
+
+        RequestManager write = new RequestManager(RequestHelper.writeRequest(commonHeaders));
+        Response markAnswerResponse = write.postRequest(markAnswerUrl, JsonUtil.toJson(answers));
 
         markAnswerResponse.then().log().all();
         Assert.assertEquals(markAnswerResponse.getStatusCode(), 200, "Mark accreditation answers failed.");
 
-        String complianceUrl = "/v2/user/compliance";
-        String complianceBody = "{" +
-                "\"subjectToRegulatoryActions\": false," +
-                "\"rbiCompliance\": true," +
-                "\"wilfulDefaulter\": false," +
-                "\"termsAcknowledged\": true" +
-                "}";
+        String complianceUrl = Endpoints.USER_COMPLIANCE;
+        ComplianceRequest complianceBody = ComplianceRequest.builder()
+                .subjectToRegulatoryActions(false)
+                .rbiCompliance(true)
+                .wilfulDefaulter(false)
+                .termsAcknowledged(true)
+                .build();
 
-        Response complianceResponse = RequestHelper.writeRequest(commonHeaders)
-                .body(complianceBody)
-                .post(complianceUrl);
+        Response complianceResponse = write.postRequest(complianceUrl, JsonUtil.toJson(complianceBody));
 
         if (complianceResponse.getStatusCode() == 200) {
             System.out.println("Compliance submitted successfully.");

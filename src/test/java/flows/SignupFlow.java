@@ -14,7 +14,7 @@ import common.TestDataHelper;
 public class SignupFlow extends ApiBaseTest {
 
     private final String countryCode = "+91";
-    private final String fixedOtp = OtpHelper.FIXED_PHONE_OTP;
+    private final String fixedOtp = OtpHelper.FIXED_OTP;
 
     private final String testMobileNumber = TestDataHelper.generateRandomMobileNumber();
 
@@ -42,8 +42,6 @@ public class SignupFlow extends ApiBaseTest {
 
         Assert.assertEquals(verifyOtpResponse.getStatusCode(), 200, "OTP verification failed.");
 
-        ApiBaseTest.tapAuth = verifyOtpResponse.header("X-Tap-Auth");
-
         ApiBaseTest.authToken = verifyOtpResponse.jsonPath().getString("token");
         ApiBaseTest.userId = verifyOtpResponse.jsonPath().getInt("userId");
         ApiBaseTest.tapSessionId = this.tapSessionId;
@@ -53,6 +51,5 @@ public class SignupFlow extends ApiBaseTest {
         ApiBaseTest.mobileNumber = this.testMobileNumber;
 
         Assert.assertNotNull(ApiBaseTest.authToken, "Auth token not found.");
-        Assert.assertNotNull(ApiBaseTest.userId, "User ID not found.");
     }
 }

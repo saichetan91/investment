@@ -1,0 +1,12 @@
+{
+  "name": "pan-updater",
+  "version": "1.0.0",
+  "description": "Script to update PAN numbers in the database",
+  "main": "updatePan.js",
+  "dependencies": {
+    "mysql2": "^3.9.2"
+  },
+  "scripts": {
+    "update-pan": "node updatePan.js"
+  }
+}

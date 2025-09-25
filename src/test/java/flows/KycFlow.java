@@ -15,6 +15,7 @@ import common.TestDataHelper;
 import common.Endpoints;
 import manager.RequestManager;
 import common.util.JsonUtil;
+import common.util.NodeScriptExecutor;
 import common.pojo.kyc.UpdateProfileRequest;
 import common.pojo.kyc.PanVerifyRequest;
 import common.pojo.kyc.PanSubmitRequest;
@@ -174,4 +175,16 @@ public class KycFlow extends ApiBaseTest {
 
         System.out.println("Bank and Accreditation flow completed successfully!");
     }
+
+    @Test(priority = 6, dependsOnMethods = {"testBankAndAccreditation"})
+    public void testFinalPanUpdate() {
+        System.out.println("Starting final PAN update for user ID: " + ApiBaseTest.userId);
+        // Get the absolute path to the script
+        String scriptPath = System.getProperty("user.dir") + "/scripts/updatePan.js";
+        
+        // Execute the script with the current user's ID
+        NodeScriptExecutor.executeScript(scriptPath, String.valueOf(ApiBaseTest.userId));
+        
+        System.out.println("Final PAN update completed successfully for user ID: " + ApiBaseTest.userId);
     }
+}
